@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FaceScore • Advanced Facial Analysis (Frontend)</title>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<!-- Styles (встроены для простоты) -->
+<style>
+:root{
+  --bg:#0b0f14; --card:#0f1720; --accent:#6a00ff; --accent-2:#ff2d6f; --muted:#98a0b3; --glass: rgba(255,255,255,0.04);
+  --success:#22c55e; --danger:#ff5252;
+  --max-width:980px;
+  font-family: Inter, Roboto, Arial, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#07101a,#0b0f14);color:#e6eef6}
+.container{max-width:var(--max-width);margin:28px auto;padding:22px}
+.header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.brand{display:flex;gap:12px;align-items:center}
+.logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:700;color:white}
+.title{font-size:20px;font-weight:700}
+.subtitle{color:var(--muted);font-size:13px;margin-top:4px}
+
+.grid{display:grid;grid-template-columns:1fr 420px;gap:20px;margin-top:22px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,0.02),var(--card));border-radius:12px;padding:16px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+.left{min-height:540px;display:flex;flex-direction:column;gap:12px}
+.controls{display:flex;gap:8px;align-items:center}
+.input-file{display:flex;gap:8px;align-items:center}
+.file-label{background:var(--glass);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+.btn{background:var(--accent);color:white;padding:10px 14px;border-radius:9px;border:0;cursor:pointer;font-weight:600}
+.btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+.preview{display:flex;gap:12px;margin-top:8px}
+.canvas-wrap{background:#02030a;border-radius:10px;padding:8px;display:flex;align-items:center;justify-content:center}
+canvas{max-width:100%;height:auto;border-radius:8px}
+
+.right{display:flex;flex-direction:column;gap:12px}
+.h-small{font-size:14px;font-weight:700}
+.metrics{display:flex;flex-direction:column;gap:8px}
+.metric{display:flex;justify-content:space-between;padding:10px;border-radius:8px;background:linear-gradient(90deg, rgba(255,255,255,0.012), transparent)}
+.metric .name{color:var(--muted)}
+.metric .val{font-weight:700}
+
+.reco{margin-top:12px;color:var(--muted);font-size:14px}
+.pro-card{padding:12px;border-radius:10px;background:linear-gradient(180deg, rgba(106,0,255,0.06), rgba(255,45,111,0.03));display:flex;flex-direction:column;gap:10px}
+.upgrade{background:var(--accent-2);color:white;border:0;padding:10px;border-radius:8px;cursor:pointer;font-weight:700}
+.lock{opacity:0.45}
+
+.footer{margin-top:16px;color:var(--muted);font-size:13px}
+
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:700;color:var(--muted);font-size:12px}
+.export{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer}
+
+.status{margin-top:6px;font-size:13px;color:var(--muted)}
+.level{font-weight:800;font-size:18px;padding:8px;border-radius:8px;text-align:center;background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent)}
+.tier-ltn{background:linear-gradient(90deg,#2b2f42,#1d2030); color:#a3b0d6}
+.tier-mtn{background:linear-gradient(90deg,#2b3e2b,#1a2b18); color:#b8e5bd}
+.tier-chad{background:linear-gradient(90deg,#422b66,#2b1551); color:#ffd6f2}
+.modal {position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6)}
+.modal .box{width:720px;background:#07101a;padding:20px;border-radius:12px}
+.close-x{float:right;cursor:pointer;color:var(--muted)}
+.small{font-size:13px;color:var(--muted)}
+.kv{display:flex;gap:12px;align-items:center}
+.pro-list{list-style:disc;margin-left:18px;color:var(--muted)}
+.note{font-size:13px;color:var(--muted)}
+@media(max-width:980px){.grid{grid-template-columns:1fr}.right{order:2}.left{order:1}}
+</style>
+</head>
+
+<body>
+<div class="container">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">FS</div>
+      <div>
+        <div class="title">FaceScore AI</div>
+        <div class="subtitle">Frontend face analysis • golden ratio • symmetry • PRO features</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;align-items:center">
+      <div class="badge">Local • Browser</div>
+      <button class="export" id="btnExport">Export JSON</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card left">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="h-small">Upload / Photo (from phone)</div>
+          <div class="small">Load frontal photo — best results</div>
+        </div>
+        <div class="small note">No server, runs in browser</div>
+      </div>
+
+      <div class="controls">
+        <label class="file-label">
+          <input type="file" id="fileInput" accept="image/*" style="display:none" />
+          Выбрать фото
+        </label>
+        <button class="btn" id="analyzeBtn">Analyze</button>
+        <button class="btn secondary" id="resetBtn">Reset</button>
+      </div>
+
+      <div class="preview">
+        <div class="canvas-wrap" style="flex:1">
+          <canvas id="canvas" width="640" height="480"></canvas>
+        </div>
+        <div style="width:160px;display:flex;flex-direction:column;gap:8px;align-items:center">
+          <div class="level tier-ltn" id="tierName">—</div>
+          <div class="status" id="status">Ready</div>
+          <button class="btn secondary" id="btnVisual" title="Toggle landmarks">Toggle landmarks</button>
+        </div>
+      </div>
+
+      <div class="reco card" id="recommendations" style="background:transparent;padding:0;margin-top:8px">
+        <div class="h-small">Recommendations</div>
+        <div id="recoText" class="note">Analyze to get personalized suggestions.</div>
+      </div>
+
+    </div><!-- left -->
+
+    <div class="card right">
+      <div class="h-small">Quick Metrics</div>
+      <div class="metrics">
+        <div class="metric"><div class="name">Final score</div><div class="val" id="scoreVal">—</div></div>
+        <div class="metric"><div class="name">Golden ratio</div><div class="val" id="goldenVal">—</div></div>
+        <div class="metric"><div class="name">Symmetry (%)</div><div class="val" id="symVal">—</div></div>
+        <div class="metric"><div class="name">Thirds balance</div><div class="val" id="thirdsVal">—</div></div>
+        <div class="metric lock" id="jawlineRow"><div class="name">Jaw angle (PRO)</div><div class="val">Locked</div></div>
+        <div class="metric lock" id="heatRow"><div class="name">Symmetry heatmap (PRO)</div><div class="val">Locked</div></div>
+      </div>
+
+      <div class="pro-card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="h-small">PRO Features</div>
+            <div class="small">Unlock full diagnostics, downloadable report, improvement plan</div>
+          </div>
+          <div>
+            <button class="upgrade" id="upgradeBtn">Upgrade to PRO</button>
+          </div>
+        </div>
+
+        <ul class="pro-list">
+          <li>Detailed jawline &amp; cheekbone metrics</li>
+          <li>Symmetry heatmap &amp; overlay</li>
+          <li>Progress tracking &amp; history (save)</li>
+        </ul>
+        <div class="note">Payment options: Telegram Stars (recommended for Telegram flow) or Stripe checkout (server required).</div>
+      </div>
+
+      <div style="margin-top:12px" class="card">
+        <div class="h-small">What the tiers mean</div>
+        <div style="margin-top:8px" class="small">
+          <b>LTN</b> — Low tier normie <br/>
+          <b>MTN</b> — Middle tier normal <br/>
+          <b>CHAD</b> — High attractiveness tier <br/>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="small">Privacy: images are processed locally in your browser and never uploaded.</div>
+      </div>
+    </div><!-- right-->
+  </div> <!-- grid -->
+
+</div><!-- container -->
+
+<!-- Modal for PRO purchase (simple) -->
+<div id="modal" style="display:none" class="modal">
+  <div class="box">
+    <div><span class="h-small">Upgrade to PRO</span><span class="close-x" id="closeModal">✕</span></div>
+    <p class="small">Choose payment method. Demo unlock will set PRO locally for testing. For real money accept payments via Telegram Bot (Stars) or Stripe (server).</p>
+    <div style="display:flex;gap:12px;margin-top:10px">
+      <div style="flex:1">
+        <div class="h-small">Telegram Stars</div>
+        <div class="small">Best if you distribute via Telegram bot. Flow: user pays Stars => your bot validates purchase (requires bot server) => returns web_app_data to unlock. See instructions below.</div>
+        <button class="btn" id="btnTelegram">Telegram flow (see guide)</button>
+      </div>
+      <div style="flex:1">
+        <div class="h-small">Stripe Checkout</div>
+        <div class="small">Integrate server endpoint that creates Stripe Checkout session and returns URL. After successful payment use webhook to mark user as PRO in your DB. See backend sample below.</div>
+        <button class="btn" id="btnStripe">Stripe flow (server)</button>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:12px;align-items:center">
+      <button id="demoUnlock" class="btn secondary">Demo unlock (local)</button>
+      <div class="small" style="color:var(--muted)">Demo: unlocks PRO in localStorage for testing only.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Big JS: analyzer, UI, PRO gating, export -->
+<script>
+/* =======================
+   Utility and Globals
+   ======================= */
+const fileInput = document.getElementById('fileInput');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resetBtn = document.getElementById('resetBtn');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const status = document.getElementById('status');
+const scoreVal = document.getElementById('scoreVal');
+const goldenVal = document.getElementById('goldenVal');
+const symVal = document.getElementById('symVal');
+const thirdsVal = document.getElementById('thirdsVal');
+const recoText = document.getElementById('recoText');
+const tierName = document.getElementById('tierName');
+const jawlineRow = document.getElementById('jawlineRow');
+const heatRow = document.getElementById('heatRow');
+const btnExport = document.getElementById('btnExport');
+
+let drawLandmarks = true;
+let currentReport = null;
+let isPro = (localStorage.getItem('facescore_pro') === '1');
+
+/* set locked UI based on pro */
+function updateProUI(){
+  if(isPro){
+    jawlineRow.classList.remove('lock');
+    heatRow.classList.remove('lock');
+    document.getElementById('upgradeBtn').innerText = 'PRO unlocked';
+    document.getElementById('upgradeBtn').disabled = true;
+  } else {
+    jawlineRow.classList.add('lock');
+    heatRow.classList.add('lock');
+    document.getElementById('upgradeBtn').innerText = 'Upgrade to PRO';
+    document.getElementById('upgradeBtn').disabled = false;
+  }
+}
+updateProUI();
+
+/* =======================
+   MediaPipe FaceMesh setup
+   ======================= */
+const faceMesh = new FaceMesh.FaceMesh({
+  locateFile: (file) => https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}
+});
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+/* helper: map normalized landmark to pixel coords */
+function toPixel(pt, imgW, imgH){ return {x: pt.x * imgW, y: pt.y * imgH, z: pt.z}; }
+
+/* pairs for symmetry checking (subset of landmarks)
+   left index -> right index mapping */
+const SYM_PAIRS = [
+  [33, 263],   // eye outer
+  [133, 362],  // eye inner
+  [61, 291],   // mouth corners
+  [234, 454],  // cheek
+  [127, 356],  // jaw near
+  [10, 10]     // forehead center (center baseline)
+];
+
+/* =======================
+   Main analyze function
+   ======================= */
+async function analyze(){ 
+  const f = fileInput.files[0];
+  if(!f){ alert('Выбери фото'); return; }
+  status.innerText = 'Loading image...';
+  const img = new Image();
+  img.src = URL.createObjectURL(f);
+  await img.decode();
+
+  // draw image to canvas (fit)
+  const maxW = 640, maxH = 480;
+  let w = img.naturalWidth, h = img.naturalHeight;
+  const ratio = Math.min(maxW/w, maxH/h, 1);
+  w = Math.round(w*ratio); h = Math.round(h*ratio);
+  canvas.width = w; canvas.height = h;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(img, 0, 0, w, h);
+
+  status.innerText = 'Analyzing...';
+
+  // run mediapipe on image element
+  await faceMesh.initialize(); // ensures models loaded
+  let results;
+  try{
+    results = await faceMesh.send({image: img});
+  }catch(e){
+    console.error(e);
+    status.innerText = 'Ошибка анализа: ' + (e.message||e);
+    return;
+  }
+
+  if(!results  !results.multiFaceLandmarks  results.multiFaceLandmarks.length===0){
+    status.innerText = 'Лицо не найдено — попробуй фронтальное фото.';
+    return;
+  }
+
+  const landmarks = results.multiFaceLandmarks[0];
+  // convert to pixel coords
+  const pts = landmarks.map(p => toPixel(p, w, h));
+
+  // compute bounding box roughly
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  pts.forEach(p=>{ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y; });
+  const bbox = {x:minX,y:minY,w:maxX-minX,h:maxY-minY};
+
+  // compute metrics
+  const metrics = computeMetrics(pts, bbox, w, h);
+
+  // visual
+  renderOverlay(pts, bbox, w, h, metrics);
+
+  // build report and UI
+  currentReport = {metrics:metrics, imageSize:{w:h>0?w:0,h:h>0?h:0}, timestamp: (new Date()).toISOString()};
+  applyReport(currentReport);
+
+  status.innerText = 'Done';
+}
+
+/* =======================
+   computeMetrics: returns object of metrics
+   ======================= */
+function computeMetrics(pts, bbox, imgW, imgH){
+  // helper dist
+  const d = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+  // key indices (MediaPipe 468 mapping approximate)
+  const leftCheek = pts[234], rightCheek = pts[454];
+  const chin = pts[152], forehead = pts[10];
+  const leftEyeOuter = pts[33], rightEyeOuter = pts[263];
+  const leftEyeInner = pts[133], rightEyeInner = pts[362];
+  const mouthLeft = pts[61], mouthRight = pts[291];
+  const noseLeft = pts[129], noseRight = pts[358];
+  const jawLeft = pts[127], jawRight = pts[356];
+
+  // raw sizes
+  const faceWidth = d(leftCheek,rightCheek);
+  const faceHeight = d(forehead,chin);
+  const eyeDistance = d(leftEyeInner, rightEyeInner);
+  const noseWidth = d(noseLeft, noseRight);
+  const mouthWidth = d(mouthLeft, mouthRight);
+
+  // 1) Golden ratio: faceHeight/faceWidth vs PHI
+  const PHI = 1.618;
+  const ratio = faceHeight / Math.max(1, faceWidth);
+  const goldenRaw = 1 - Math.abs(ratio - PHI) / PHI; // in 0..1 (approx)
+  const goldenScore = Math.max(0, Math.min(1, goldenRaw));
+
+  // 2) Eye proportion: ideal eye distance fraction (approx 0.35 of face width)
+  const idealEyeFrac = 0.35;
+  const eyeFrac = eyeDistance / Math.max(1, faceWidth);
+  const eyeScore = 1 - Math.abs(eyeFrac - idealEyeFrac) / idealEyeFrac;
+  const eyeScoreClamped = Math.max(0, Math.min(1, eyeScore));
+
+  // 3) Nose width: ideal ~0.25 of face width
+  const noseFrac = noseWidth / Math.max(1, faceWidth);
+  const noseScore = 1 - Math.abs(noseFrac - 0.25) / 0.25;
+  const noseScoreClamped = Math.max(0, Math.min(1, noseScore));
+
+  // 4) Symmetry: measure average absolute x offset between pairs wrt bbox center
+  const centerX = bbox.x + bbox.w/2;
+  let symSum = 0, symCnt = 0;
+  SYM_PAIRS.forEach(pair=>{
+    const L = pts[pair[0]];
+    const R = pts[pair[1]];
+    if(L && R){
+      const lx = Math.abs(L.x - centerX);
+      const rx = Math.abs(R.x - centerX);
+      symSum += Math.abs(lx - rx);
+      symCnt += 1;
+    }
+  });
+  const symAvgDiff = symCnt? symSum / symCnt : 999;
+  // normalize relative to face width
+  const symScore = Math.max(0, 1 - (symAvgDiff / Math.max(1, faceWidth)));
+  const symScoreClamped = Math.max(0, Math.min(1, symScore));
+
+  // 5) Thirds: brightness difference between top/mid/bottom (simple)
+  // sample the image pixels from canvas (will read the face region)
+  const imgData = ctx.getImageData(Math.max(0,Math.round(bbox.x)), Math.max(0,Math.round(bbox.y)), Math.max(1,Math.round(bbox.w)), Math.max(1,Math.round(bbox.h)));
+  const H = imgData.height, W = imgData.width;
+  let topSum=0,topCnt=0,middleSum=0,middleCnt=0,bottomSum=0,bottomCnt=0;
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const idx = (y*W + x)*4;
+      const r = imgData.data[idx], g = imgData.data[idx+1], b2 = imgData.data[idx+2];
+      const lum = 0.299*r + 0.587*g + 0.114*b2;
+      if(y < H/3){ topSum += lum; topCnt++; }
+      else if(y < 2*H/3){ middleSum += lum; middleCnt++; }
+      else { bottomSum += lum; bottomCnt++; }
+    }
+  }
+  const topMean = topCnt? topSum/topCnt:0;
+  const bottomMean = bottomCnt? bottomSum/bottomCnt:0;
+  const thirdsDiff = Math.abs(topMean - bottomMean) / 255; // 0..1
+  const thirdsScore = Math.max(0, 1 - thirdsDiff);
+
+  // 6) Jawline angle approx: angle between vectors (jawLeft -> chin) and (chin->jawRight)
+  function angleBetween(a,b,c){
+    // angle at b between ba and bc
+    const v1 = {x:a.x - b.x, y:a.y - b.y};
+    const v2 = {x:c.x - b.x, y:c.y - b.y};
+    const dot = v1.x*v2.x + v1.y*v2.y;
+    const n1 = Math.hypot(v1.x,v1.y);
+    const n2 = Math.hypot(v2.x,v2.y);
+    if(n1*n2===0) return 0;
+    let ang = Math.acos(Math.max(-1, Math.min(1, dot/(n1*n2))));
+    return ang * (180/Math.PI);
+  }
+  const jawAngle = angleBetween(jawLeft, chin, jawRight); // in degrees
+  // ideal jaw angle smaller -> sharper jaw; we'll map 70-140 degrees range
+  const jawNorm = (140 - jawAngle) / (140 - 70); // higher better
+  const jawScore = Math.max(0, Math.min(1, jawNorm));
+
+  // 7) Skin smoothness approx: standard deviation of central patch luminance
+  // sample central 30% area
+  let lumArr = [];
+  for(let y=Math.round(H*0.35); y<Math.round(H*0.65); y++){
+    for(let x=Math.round(W*0.35); x<Math.round(W*0.65); x++){
+      const idx = (y*W + x)*4;
+      const r = imgData.data[idx], g = imgData.data[idx+1], b2 = imgData.data[idx+2];
+      const lum = 0.299*r + 0.587*g + 0.114*b2;
+      lumArr.push(lum);
+    }
+  }
+  const meanLum = lumArr.reduce((a,b)=>a+b,0)/Math.max(1,lumArr.length);
+  const variance = lumArr.reduce((s,v)=>s + (v-meanLum)*(v-meanLum),0)/Math.max(1,lumArr.length);
+  const std = Math.sqrt(variance);
+  // lower std -> smoother -> higher score
+  const skinScore = Math.max(0, Math.min(1, 1 - (std / 60))); // tuned empirically
+
+  // final score (weighted)
+  const finalRaw = (goldenScore*0.25 + symScoreClamped*0.30 + eyeScoreClamped*0.15 + jawScore*0.15 + skinScore*0.15 + thirdsScore*0.10 - noseScoreClamped*0*0) ;
+  // normalize to 0..1
+  const finalClamped = Math.max(0, Math.min(1, finalRaw));
+  const finalScore10 = Math.round(finalClamped * 10 * 100)/100;
+
+  // compute tier name
+  let tier = 'LTN';
+  if(finalScore10 >= 8.5) tier = 'CHAD';
+  else if(finalScore10 >= 6.8) tier = 'MTN';
+  else tier = 'LTN';
+
+  // return object
+  return {
+    faceWidth, faceHeight, eyeDistance, noseWidth, mouthWidth,
+    goldenScore, eyeScore: eyeScoreClamped, noseScore: noseScoreClamped,
+    symmetry: symScoreClamped, thirds: thirdsScore, jawAngle, jawScore, skinScore,
+    final: finalScore10, tier
+  };
+}
+
+/* =======================
+   Render overlay and results
+   ======================= */
+function renderOverlay(pts, bbox, w, h, metrics){
+  // clear then draw image is already present
+  // draw landmarks if requested
+  ctx.lineWidth = 1.4;
+  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  // draw bbox
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeRect(bbox.x, bbox.y, bbox.w, bbox.h);
+
+  // draw points
+  if(drawLandmarks){
+    ctx.fillStyle = 'rgba(106,0,255,0.9)';
+    for(let i=0;i<pts.length;i++){
+      const p = pts[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // update UI values
+  scoreVal.innerText = metrics.final + ' / 10';
+  goldenVal.innerText = (metrics.goldenScore*100).toFixed(0) + '%';
+  symVal.innerText = (metrics.symmetry*100).toFixed(0) + '%';
+  thirdsVal.innerText = (metrics.thirds*100).toFixed(0) + '%';
+  tierName.innerText = metrics.tier;
+
+  // recommendations
+  let rec = [];
+  if(metrics.skinScore < 0.6) rec.push('Improve skin texture: consistent skincare, sunscreen, hydration.');
+  if(metrics.jawScore < 0.6) rec.push('Jawline: posture, neck exercises, reduce facial fat.');
+  if(metrics.symmetry < 0.75) rec.push('Symmetry minor: adjust angles in photos; subtle styling.');
+  if(metrics.goldenScore < 0.7) rec.push('Proportions: hair / beard / haircut can visually change perceived proportions.');
+  if(metrics.eyeScore < 0.7) rec.push('Eye spacing: glasses or hairstyle can visually balance eyes.');
+  if(rec.length===0) rec.push('Solid proportions. Maintain hydration, sleep and healthy diet.');
+
+  recoText.innerHTML = rec.map(r => '• ' + r).join('<br>');
+}
+
+/* =======================
+   UI events
+   ======================= */
+analyzeBtn.addEventListener('click', analyze);
+resetBtn.addEventListener('click', ()=>{
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  status.innerText = 'Ready';
+  scoreVal.innerText = '—';
+  goldenVal.innerText = '—';
+  symVal.innerText = '—';
+  thirdsVal.innerText = '—';
+  recoText.innerHTML = 'Analyze to get personalized suggestions.';
+  tierName.innerText = '—';
+  currentReport = null;
+});
+
+document.getElementById('btnVisual').addEventListener('click', ()=>{
+  drawLandmarks = !drawLandmarks;
+  if(currentReport) {
+    // re-run analysis to redraw overlay
+    analyze();
+  }
+});
+
+/* =======================
+   PRO modal and purchase simulation
+   ======================= */
+const modal = document.getElementById('modal');
+document.getElementById('upgradeBtn').addEventListener('click', ()=> modal.style.display = 'flex');
+document.getElementById('closeModal').addEventListener('click', ()=> modal.style.display = 'none');
+
+document.getElementById('demoUnlock').addEventListener('click', ()=>{
+  // demo unlocking (local only)
+  localStorage.setItem('facescore_pro','1');
+  isPro = true;
+  updateProUI();
+  modal.style.display = 'none';
+  alert('PRO unlocked (demo). For real payments integrate Stripe or Telegram Stars per instructions below.');
+});
+
+/* Telegram and Stripe buttons just provide guidance */
+document.getElementById('btnTelegram').addEventListener('click', ()=> {
+  alert('Telegram flow: create Bot via BotFather, implement payments via Bot API. You will need a simple server to verify purchases and return web_app_data. See guide in documentation below.');
+});
+document.getElementById('btnStripe').addEventListener('click', ()=> {
+  alert('Stripe flow: create Stripe account, backend endpoint to create Checkout session and webhook to verify payment. See Node/Express sample in documentation below.');
+});
+
+/* Export JSON */
+btnExport.addEventListener('click', ()=>{
+  if(!currentReport){ alert('No report to export'); return; }
+  const data = JSON.stringify(currentReport, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'facescore_report.json';
+  a.click();
+});
+
+/* =======================
+   Helpers: Tier names mapping more stylish
+   ======================= */
+function niceTierName(t){
+  if(t==='CHAD') return 'CHAD • Elite';
+  if(t==='MTN') return 'MTN • Attractive';
+  return 'LTN • Average';
+}
+
+/* =======================
+   On load
+   ======================= */
+updateProUI();
+status.innerText = 'Ready. Upload a frontal photo and click Analyze.';
+</script>
+
+<!-- =======================
+     Documentation + Guides (inline for convenience)
+     =======================
+     The sections below don't execute — they are left as comments / instructions
+     for you.
+  Read and follow them to:
+       • Host on GitHub Pages
+       • Integrate Stripe (server code snippet)
+       • Integrate Telegram Bot & Stars (flow)
+-->
+
+<!--
+==========================
+HOW TO USE (short)
+==========================
+1) Save this file as index.html inside a folder.
+2) Open locally via a simple server:
+   - If you have Python: open terminal in the folder and run:
+     python -m http.server 8000
+     then open http://localhost:8000 in browser.
+   - Or push to GitHub and enable GitHub Pages (gh-pages) or host on Vercel/Netlify.
+3) On the page: "Выбрать фото" -> choose frontal photo -> "Analyze".
+4) To test PRO: Upgrade -> Demo unlock (local).
+5) To implement real payments, follow the guides below.
+
+==========================
+PRODUCTION HOSTING (free):
+==========================
+Option A: GitHub Pages
+  - Create a GitHub repo, push this index.html (and any assets).
+  - In repo settings -> Pages -> set Branch to main root -> Save
+  - Access at https://<your-username>.github.io/<repo>/
+
+Option B: Vercel / Netlify
+  - Drag & drop folder (or connect repo) — they serve static sites.
+
+==========================
+MAKE REAL PAYMENT (overview)
+==========================
+Two recommended flows:
+
+1) Telegram Stars (no Stripe needed)
+   - Create bot in BotFather (get BOT_TOKEN).
+   - Implement a small server (Node/Express) to listen for purchase updates and verify purchase.
+   - Use Telegram Payments API to request payment (Bot sends an invoice).
+   - On payment success your server marks user ID as PRO and you pass that info to WebApp via Telegram WebApp init data or query parameters.
+   - This requires a small server (for verifying purchase and storing PRO flag).
+
+2) Stripe Checkout (recommended for web)
+   - Create Stripe account, product and price.
+   - Implement backend endpoint to create a Checkout Session and return its URL.
+   - After user completes payment, Stripe will redirect back to your site; server verifies via webhook and marks user as PRO in your DB.
+   - Frontend uses a session link to redirect user to Stripe Checkout.
+
+-------------------------
+Sample minimal Node/Express server for Stripe (example only):
+-------------------------
+const express = require('express');
+const Stripe = require('stripe');
+const bodyParser = require('body-parser');
+const app = express();
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+app.use(bodyParser.json());
+
+app.post('/create-checkout-session', async (req, res) => {
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    mode: 'payment',
+    line_items: [{
+      price: 'price_XXXX', // your price id
+      quantity: 1
+    }],
+    success_url: 'https://your-site.com/success?session_id={CHECKOUT_SESSION_ID}',
+    cancel_url: 'https://your-site.com/cancel'
+  });
+  res.json({url: session.url});
+});
+
+// webhook to verify payment and mark pro
+app.post('/webhook', bodyParser.raw({type:'application/json'}), (req,res)=>{
+  // verify signature and set user as PRO in DB
+});
+
+app.listen(3000);
+
+-------------------------
+Telegram Payments minimal flow:
+-------------------------
+- Use Bot API 'sendInvoice' to send invoice to user.
+- On successful payment update, Bot receives update with pre_checkout_query and successful payment.
+- Bot confirms payment and can send a WebApp link with user identity included or a token.
+- Your WebApp (frontend) receives token and can call your backend to check if token valid (server stores PRO).
+
+==========================
+SECURITY & PRIVACY
+==========================
+- This app processes images LOCALLY in the browser by default (privacy friendly).
+- If you add a server for payments, do NOT upload photos to server unless user agrees.
+- For real subscriptions, you need a server to store user status securely.
+
+==========================
+IMPROVEMENTS & NEXT STEPS
+==========================
+- Add user accounts + history (requires backend + DB).
+- Add face history storage (PRO only).
+- Add more metrics (skull shape, canthal tilt) and ML-backed scoring (external API or on-device TF.js).
+  - Build Telegram bot that opens this page as mini-app (set domain in BotFather).
+- Use Stripe customer portal for recurring subscriptions.
+
+End of inline docs.
+-->
+
+</body>
+</html>
